@@ -1,0 +1,121 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <sqlca.h>
+#include "Report.h"
+#include "Files.h"
+#include "esql_func.h"
+
+void sql_clientInvoices(FILE* fpMsg, FILE* fpLog, int vCustomerID, FILE* fp) {
+		char logMsg[200];
+		sprintf(logMsg, "Make Client report fot Customer ID :%d", vCustomerID);
+		writeToLogMsg(fpMsg, logMsg);
+   
+   
+	EXEC SQL WHENEVER SQLERROR do sql_error(fpLog, "Oracle error"); 	
+    EXEC SQL BEGIN DECLARE SECTION;
+          char vInvoiceNo[20];
+        double vInvoiceAmount;
+        double vPaymentAmount;
+    EXEC SQL END DECLARE SECTION;
+	
+    EXEC SQL DECLARE cursorInvoice CURSOR FOR
+	          SELECT inv_no, amount
+                FROM invoices
+               WHERE customer_id = :vCustomerID;
+	
+				
+	EXEC SQL OPEN cursorInvoice;
+	// Da slojim print za prazen kursor ??
+	if (sqlca.sqlcode == 0) 
+    {
+		writeToLogMsg(fpMsg, "CursorInvoice is ready for use.");
+    } 
+	else 
+	{
+		writeToLogErr(fpLog, "CursorInvoice is NOT ready for use.");
+		writeToLogErr(fpLog, sqlca.sqlerrm.sqlerrmc);
+		exit(1);
+	}
+
+    while (sqlca.sqlcode == 0) 
+	{
+	EXEC SQL WHENEVER NOT FOUND DO break;
+	EXEC SQL FETCH cursorInvoice INTO :vInvoiceNo, :vInvoiceAmount;
+		stringTrim(vInvoiceNo);
+		
+    EXEC SQL SELECT SUM(amount) INTO :vPaymentAmount
+               FROM payments
+              WHERE invoice_no = :vInvoiceNo;
+			
+	if (sqlca.sqlcode == 0) 
+    {
+		writeToLogMsg(fpMsg, "Make select from invoice and payments.");
+
+		if (vInvoiceAmount <= vPaymentAmount){
+			fprintf(fp, "Invoice No: %s  has a valid payment for customer %d\n", vInvoiceNo, vCustomerID);
+		}
+		else {
+			fprintf(fp, "Invoice No: %s  has an invalid payment for customer %d\n", vInvoiceNo, vCustomerID);
+		}
+	}
+	else 
+	{	
+		printf("\nCan not make select from invoice and payment.\n");
+		writeToLogErr(fpLog, "Can not make select from invoice and payment.");
+		writeToLogErr(fpLog, sqlca.sqlerrm.sqlerrmc);
+		//EXEC SQL DISCONNECT;
+        exit(1);
+	}
+	
+    }
+	    
+    EXEC SQL CLOSE cursorInvoice;
+}
+
+void sql_periodInvoices(FILE* fpMsg, FILE* fpLog, char* dateFrom, char* dateTo, FILE* fp)
+{
+		char logMsg[200];
+		sprintf(logMsg, "Make Date report fot all Customer from fate: %s , to date: %s", dateFrom, dateTo);
+		writeToLogMsg(fpMsg, logMsg);
+		
+	EXEC SQL BEGIN DECLARE SECTION;
+		  int vCustomerID;
+		  char vExtRef[10];
+		  char vFirstName[60];
+		  char vLastName[60];
+    EXEC SQL END DECLARE SECTION;
+	
+	EXEC SQL WHENEVER SQLERROR do sql_error(fpLog, "Oracle error"); 	
+	
+	EXEC SQL DECLARE cursorPeriodInvoices CURSOR FOR
+	                      SELECT c.first_name, c.family_name, c.customer_id, c.external_reference
+                                FROM customers c, invoices i, payments p
+                              WHERE c.customer_id = i.customer_id AND i.inv_no = p.invoice_no
+	                            AND (TRUNC(p.payment_dt) < TO_DATE(:dateFrom, 'YYYY-MM-DD') OR TRUNC(p.payment_dt) > TO_DATE(:dateTo, 'YYYY-MM-DD')) ;
+	
+	EXEC SQL OPEN cursorPeriodInvoices;
+	
+	if (sqlca.sqlcode == 0) 
+    {
+		writeToLogMsg(fpMsg, "CursorInvoice is ready for use.");
+    } 
+	else 
+	{
+		writeToLogErr(fpLog, "CursorInvoice is NOT ready for use.");
+		writeToLogErr(fpLog, sqlca.sqlerrm.sqlerrmc);
+		exit(1);
+	}
+		
+	while (sqlca.sqlcode == 0) {
+	  
+	   EXEC SQL WHENEVER NOT FOUND DO break;
+	
+	   EXEC SQL FETCH cursorPeriodInvoices INTO :vFirstName, :vLastName, :vCustomerID, :vExtRef;
+	
+	   fprintf(fp, "'%s' '%s' with internal reference %d and external reference '%s' hasn't payed in this period \n", vFirstName, vLastName, vCustomerID, vExtRef);		
+	}
+	
+	EXEC SQL CLOSE cursorPeriodInvoices;
+}

@@ -1,0 +1,135 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <sqlca.h>
+#include "Vector.h"
+#include "Files.h"
+#include "DataValidation.h"
+#include "esql_func.h"
+#include <ctype.h>
+
+
+int main() 
+{
+	
+	char cRow[MAX_ROW];
+    char cRowForType[MAX_ROW];
+    CustomersData cd;
+    InvoicesData id;
+    PaymentsData pd;
+	char projectDir[] = "/media/sf_Final_project/Test_Project/";
+	
+	FileNameVector fileVector;
+	
+	FILE* fpMsg = openLogFile("msg", "program");
+	FILE* fpLog = openLogFile("err", "program");
+	
+	initVector(fpMsg, fpLog, &fileVector);
+	
+	char connectionSql[] = "TEAM3/dbpass@83.228.124.173:6223/TEAM3";
+	//char connectionSql[] = "rosen_karadjov/dbpass@83.228.124.173:6223/rosen_karadjov";
+	int connectResult = 0;
+	connectResult = sql_Connect(fpMsg, fpLog, connectionSql);
+	if (connectResult == 1)
+	{
+	exit(1);
+	}
+	
+	// while (1) {
+    /* Check if the connection is still open */
+    //if (sqlca.sqlcode == ESQL_NOT_CONNECTED) {
+      /* Connection lost - attempt to reconnect */
+      //writeToLogErr(fpLog, "Lost connection to the database - attempting to reconnect.");
+      //connectResult = sql_Connect(fpMsg, fpLog, connectionSql);
+      //if (connectResult != 0) {
+        /* Reconnection failed - print error message and exit */
+        //writeToLogErr(fpLog, "Failed to reconnect to the database.");
+        //exit(1);
+      //}
+    //} 
+	int result = 0;
+	result = chdir(projectDir);
+	if (result != 0) { writeToLogErr(fpLog, "Can not change the directori."); }
+	
+	/*Fill file names from the directory in Vector. Futcher without vector ? */
+	fillFileVector(fpMsg, fpLog, projectDir, &fileVector);
+	int h = 0;
+	for (h = 0; h < fileVector.size; h++)
+	{
+		int isTheFileNameCorrect = validateFileName(fpMsg, fpLog, fileVector.data[h]);
+
+		if (isTheFileNameCorrect == 0)
+		{
+			removeAt(fpMsg, fpLog, &fileVector, h);
+			h--;
+		}
+	}
+	
+	for (h = 0; h < fileVector.size; h++)
+	{	
+		printf("\nFail za obrabotka : %s\n", fileVector.data[h]);
+		FILE* fpOK = tryOpenKoOk(fpMsg, fpLog, fileVector.data[h], projectDir, "ok");
+		FILE* fpKO = tryOpenKoOk(fpMsg, fpLog, fileVector.data[h], projectDir, "ko");
+				
+		fprintf(fpMsg, "\nOpen %s\n", fileVector.data[h]);
+		fprintf(fpLog, "\nOpen %s\n", fileVector.data[h]);
+				
+		FILE* fp = fopen(fileVector.data[h], "r");
+			if (fp == NULL) 
+			{
+				writeToLogErr(fpLog, "Error opening file!");
+				return 1;
+			}
+
+		int rows = countRowsInFile(fp);
+		int i = 0;
+		for (i = 0; i < rows; i++) 
+		{		
+		fillArray(fp, cRow);
+			strcpy(cRowForType,cRow);
+			
+			fprintf(fpMsg, "\n");
+			writeToLogMsg(fpMsg, cRow);
+			
+			if (validationRow(fpMsg, fpLog, fp, cRowForType, cRow)) 
+			{								    
+				if (strcmp(cRowForType, "01") == 0) 
+				{
+					insertCustomersInDb(fpMsg, fpLog, &cd,cRow);
+				}
+				else if (strcmp(cRowForType, "02") == 0) 
+				{
+					insertInvoicesInDb(fpMsg, fpLog, &id, cRow);
+				}
+				else if (strcmp(cRowForType, "03") == 0) 
+				{
+               		insertPaymentsInDb(fpMsg, fpLog, &pd, cRow);
+				}
+				fprintf(fpOK, cRow);
+			}
+			else 
+			{
+				fprintf(fpMsg, "\n");
+				writeToLogErr(fpLog, cRow);
+				writeToLogErr(fpLog, "Row type is not valid.");
+				fprintf(fpKO, cRow);
+			}
+       	}
+				
+		sql_Commit(fpMsg, fpLog);
+				
+		fclose(fpOK);
+		fclose(fpKO);
+		fclose(fp);
+		renameFileExtBackAndMove(fpMsg, fpLog, fileVector.data[h]);
+	}
+
+	fclose(fpMsg);
+	fclose(fpLog);
+	printf("\n......Good Buy......\n");
+	//}
+	exit(0);
+	return 0;
+}

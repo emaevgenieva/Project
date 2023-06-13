@@ -1,0 +1,152 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include"Vector.h"
+#include"Files.h"
+#include <dirent.h>
+#include <time.h>
+
+void renameFileExtBackAndMove(FILE* fpMsg, FILE* fpLog, char* fileName)
+{
+	char logMsg[200];
+	sprintf(logMsg, "Rename and move %s", fileName);
+	writeToLogMsg(fpMsg, logMsg);
+	
+	char failNewName[200] = "/media/sf_Final_project/Test_Project/ReadedFiles/";
+	char newExt[] = ".back";
+
+	strcat(failNewName, fileName);
+	strtok(failNewName, ".");
+	strcat(failNewName, newExt);
+
+	int result = 0;
+	result = rename(fileName, failNewName);
+
+	if (result != 0)
+	{
+	char errLog[200];
+	sprintf(errLog, "Can not rename and move %s", fileName);
+	writeToLogErr(fpLog, errLog);
+	}
+}
+
+void readFilesInFolder(char* projectDir)
+{
+	DIR* d;
+	struct dirent* dir;
+	d = opendir(projectDir);
+
+	if (d != NULL)
+	{
+		/* print all the files and directories within directory */
+		while ((dir = readdir(d)) != NULL)
+		{
+			printf("%s\n", dir->d_name);
+		}
+		closedir(d);
+	}
+	else {
+		/* could not open directory */
+		perror("");
+	}
+}
+
+FILE* tryOpenKoOk(FILE* fpMsg, FILE* fpLog, char* fileName, char* currDir, char* ext)
+{
+	writeToLogMsg(fpMsg, "Open file KO or OK.");
+	
+	FILE* fp;
+	char fileNewName[200] = { '0' };
+	//char ext1[] = "ok";
+	char dot[] = ".";
+	char dash[] = "/";
+
+	strcpy(fileNewName, currDir);
+	strcat(fileNewName, ext);
+	strcat(fileNewName, dash);
+	strcat(fileNewName, fileName);
+	strtok(fileNewName, dot);
+	strcat(fileNewName, dot);
+	strcat(fileNewName, ext);
+
+	fp = fopen(fileNewName, "w");
+	if (fp == NULL)
+	{
+		writeToLogErr(fpLog, "Can not open file KO or OK.");
+		exit(1);
+	}
+	return fp;
+}
+
+FILE* openLogFile(const char* aType, const char* bType)
+{	
+	char date_str[64];
+    time_t now = time(NULL);
+    strftime(date_str, sizeof(date_str), "%Y_%m_%d_%H_%M_%S", localtime(&now));
+	
+	FILE* fp;
+	char log[] = "log";
+	char dash[] = "_";
+	char failLogType[200] = "/media/sf_Final_project/Test_Project/logs/";
+		
+	strcat(failLogType, bType);
+	strcat(failLogType, dash);
+	strcat(failLogType, log);
+	strcat(failLogType, dash);
+	strcat(failLogType, aType);
+	strcat(failLogType, dash);
+	strcat(failLogType, date_str);
+				
+	fp = fopen(failLogType, "a");
+	if (fp == NULL)
+	{
+		printf("Error open Log-fail.\n");
+		exit(1);
+	}
+	return fp ;
+}
+
+void writeToLogErr(FILE* fpLog, const char* errorLog)
+{
+
+	char date_str[64];
+    time_t now = time(NULL);
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    // Write error message to log file with current timestamp
+	
+    fprintf(fpLog, "[ERROR] [%s] [%s]\n", date_str, errorLog);
+}
+
+void writeToLogMsg(FILE* fpMsg, const char* logMsg)
+{
+
+	char date_str[64];
+    time_t now = time(NULL);
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    // Write error message to log file with current timestamp
+    fprintf(fpMsg, "[%s] [%s]\n", date_str, logMsg);
+}
+
+FILE* openReportFile()
+{	
+	char date_str[64];
+    time_t now = time(NULL);
+    strftime(date_str, sizeof(date_str), "%Y_%m_%d_%H_%M_%S", localtime(&now));
+	
+	FILE* fp;
+	//char log[] = "report";
+	//char dash[] = "_";
+	char failLogType[200] = "/media/sf_Final_project/Test_Project/report/report_";
+		
+	strcat(failLogType, date_str);
+				
+	fp = fopen(failLogType, "a");
+	if (fp == NULL)
+	{
+		printf("Error open report Log-fail.\n");
+		exit(1);
+	}
+	return fp ;
+}

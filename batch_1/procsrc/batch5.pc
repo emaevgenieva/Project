@@ -1,0 +1,179 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <oraca.h>
+#include <sqlca.h>
+#include "Files.h"
+
+void sql_batchSelectGenerator(FILE* fpMsg, FILE* fpLog, char* externalRef){
+	
+	EXEC SQL BEGIN DECLARE SECTION;
+	    
+	    char vInvNo[51];
+		int newSeq;
+		char szInvNo[21];
+		int vCustId = 0;
+		int szID;
+		char vCurrency[4];
+		char vOriginalInvoiceId[61];//номера на новата фактура
+		double vAmountOnWhichPutInterest;//сума, на която ще слагаме лихва
+		double vInterest;//5%-ното увеличение,сиреч новата фактура, която има стойност =5% от amount-та на фактурата, на която слагаме лихва
+		
+	EXEC SQL END DECLARE SECTION;
+	
+	/* handle errors */
+	EXEC SQL WHENEVER SQLERROR do sql_error("Oracle error");
+	
+	// взели сме тея фактури които са с над 5 дни отгоре и не са напълно платени
+														
+		
+//==========================================================================
+	//случая, в който externalRef НЕ Е 0
+	//и original_invoice_id == null, т.е. не слагаме лихва на лихвата
+	if(strcmp(externalRef, "0") != 0 ){ //т.е. проверяваме за конкретен човек
+	
+	EXEC SQL SELECT customer_id 
+			   INTO :szID 
+			   FROM customers 
+			  WHERE external_reference = :externalRef;
+ 
+	if (sqlca.sqlcode == 0){
+			
+			EXEC SQL DECLARE cursorInvoices CURSOR FOR
+			  SELECT inv_no, amount , currency, customer_id
+				FROM invoices
+			   WHERE amount_due IS NOT NULL AND TRUNC(SYSDATE - due_date) > 5 AND original_invoice_id IS NULL AND customer_id = :szID;	
+			
+			EXEC SQL OPEN cursorInvoices;
+
+			while (sqlca.sqlcode == 0){
+				// Exit the loop if no more invoices are found
+				EXEC SQL WHENEVER NOT FOUND DO break;
+				
+				// С курсора пълним намерените стойности за inv_no, amount
+				// Fetch invoice details into declared variables
+				EXEC SQL FETCH cursorInvoices INTO :vInvNo, :vAmountOnWhichPutInterest, :vCurrency, :vCustId;
+								
+				//слагаме лихва от 5% за сума на новата фактура
+				vInterest = vAmountOnWhichPutInterest * 0.05;
+			
+				//взимаме последния seq
+				EXEC SQL SELECT MAX(i.seq) 
+						   INTO :newSeq 
+						   FROM invoices i, customers c 
+						   WHERE i.customer_id = c.customer_id AND c.external_reference = :externalRef;
+						  		  
+				newSeq = newSeq + 1;
+				stringTrim(vInvNo);
+				
+				//правим инсърта
+				EXEC SQL INSERT INTO invoices 	  ( /* 01*/ inv_no,  
+													/* 02*/ amount, 
+													/* 03*/ amount_due, 
+													/* 04*/ currency, 
+													/* 05*/ issue_date, 
+													/* 06*/ due_date, 
+													/* 07*/ customer_id, 
+													/* 08*/ seq,
+													/* 09*/ original_invoice_id
+													)
+							  VALUES (/* 01*/ :vCustId||'_'||:newSeq||'_'||TO_CHAR(TO_DATE(SYSDATE), 'YYYYMMDD'),
+									  /* 02*/ :vInterest, 
+									  /* 03*/ :vInterest, 
+									  /* 04*/ :vCurrency, 
+									  /* 05*/ SYSDATE, 
+									  /* 06*/ NULL, 
+									  /* 07*/ :vCustId, 
+									  /* 08*/ :newSeq,
+									  /* 09*/ :vInvNo
+									  );
+						//EXEC SQL COMMIT; 
+										 
+					//ако всичко е ок да се изпише че е добавен новия ред с лихвата
+					if(sqlca.sqlcode == 0){
+						EXEC SQL COMMIT; 
+						writeToLogMsg(fpMsg, "Row inserted\n");
+					} 
+					else{
+						EXEC SQL ROLLBACK WORK RELEASE;
+						writeToLogErr(fpLog, "Row NOT inserted\n.");
+						//printf("Row NOT inserted\n");
+						//return 0;
+					}
+			}
+			
+			EXEC SQL CLOSE cursorInvoices;
+			}
+		}
+	else if(strcmp(externalRef, "0") == 0){//=============================case 2==========================//в този случай ще проверим за всички customer-и
+printf("\n vleznah \n");
+			EXEC SQL DECLARE cursorInvoices2 CURSOR FOR
+			  SELECT inv_no, amount , currency, customer_id
+				FROM invoices
+			   WHERE amount_due IS NOT NULL AND TRUNC(SYSDATE - due_date) > 5 AND original_invoice_id IS NULL;	
+			
+			EXEC SQL OPEN cursorInvoices2;
+									
+			while (sqlca.sqlcode == 0){
+				// Exit the loop if no more invoices are found
+				EXEC SQL WHENEVER NOT FOUND DO break;
+				
+				// С курсора пълним намерените стойности за inv_no, amount
+				// Fetch invoice details into declared variables
+				EXEC SQL FETCH cursorInvoices2 INTO :vInvNo, :vAmountOnWhichPutInterest, :vCurrency, :vCustId;
+				
+				//слагаме лихва от 5% за сума на новата фактура
+				vInterest = vAmountOnWhichPutInterest * 0.05;
+												
+				//взимаме последния seq
+				EXEC SQL SELECT MAX(i.seq) 
+						   INTO :newSeq 
+						   FROM invoices i, customers c 
+						   WHERE i.customer_id = c.customer_id AND c.customer_id = :vCustId;
+				  
+				newSeq = newSeq + 1;
+				stringTrim(vInvNo);
+				
+				//правим инсърта
+				EXEC SQL INSERT INTO invoices 	  ( /* 01*/ inv_no,  
+													/* 02*/ amount, 
+													/* 03*/ amount_due, 
+													/* 04*/ currency, 
+													/* 05*/ issue_date, 
+													/* 06*/ due_date, 
+													/* 07*/ customer_id, 
+													/* 08*/ seq,
+													/* 09*/ original_invoice_id
+													)
+							  VALUES (/* 01*/ :vCustId||'_'||:newSeq||'_'||TO_CHAR(TO_DATE(SYSDATE), 'YYYYMMDD'),
+									  /* 02*/ :vInterest, 
+									  /* 03*/ :vInterest, 
+									  /* 04*/ :vCurrency, 
+									  /* 05*/ SYSDATE, 
+									  /* 06*/ NULL, 
+									  /* 07*/ :vCustId, 
+									  /* 08*/ :newSeq,
+									  /* 09*/ :vInvNo
+									  );
+						//EXEC SQL COMMIT; 
+												 
+					//ако всичко е ок да се изпише че е добавен новия ред с лихвата
+					if(sqlca.sqlcode == 0){
+						EXEC SQL COMMIT; 
+						writeToLogMsg(fpMsg, "Row inserted\n");
+						//printf("Row inserted\n");
+						//return 1;
+					} 
+					else{
+						EXEC SQL ROLLBACK WORK RELEASE;
+						writeToLogErr(fpLog, "Row NOT inserted\n.");
+						//printf("Row NOT inserted\n");
+						//return 0;
+					}
+			}
+			
+			EXEC SQL CLOSE cursorInvoices2;
+	}
+}
+

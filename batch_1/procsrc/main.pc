@@ -1,0 +1,57 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <sqlca.h>
+#include "batch5.h"
+#include "Files.h"
+
+int main(int argc, char *argv[])
+{
+	FILE* fpMsg = openLogFile("msg", "batch_1");
+	FILE* fpLog = openLogFile("err", "batch_1");
+	
+	char projectDir[] = "/media/sf_Final_project/Test_Project/";
+	int result = 0;
+	result = chdir(projectDir);
+	if (result != 0) { writeToLogErr(fpLog, "Can not change the directori."); }
+
+    char szUserId[64] = "TEAM3/dbpass@83.228.124.173:6223/TEAM3";
+	//char szUserId[64] = "rosen_karadjov/dbpass@83.228.124.173:6223/rosen_karadjov";
+      EXEC SQL CONNECT :szUserId;
+        if (0 == sqlca.sqlcode)
+        {
+		  writeToLogMsg(fpMsg, "Committing");
+          printf("\nConnected.\n");
+	      //return 0;
+        }
+        else
+        {
+		  writeToLogErr(fpLog, "Can not Connect.");
+	      printf("\nNot connected.\n");
+		  exit(1);
+	      //return 1;
+        }
+
+   
+	char* extRef = argv[1];
+	
+	printf("\n nomera e '%s'\n", extRef);
+	
+    /* if (argc < 1) {
+        printf("Error \n");
+		exit(1);
+        return 1;
+    } */
+	
+    sql_batchSelectGenerator(fpMsg, fpLog, extRef);
+	
+	EXEC SQL COMMIT; 
+	
+	fclose(fpMsg);
+	fclose(fpLog);
+	
+	printf("\n......Have a nice day......\n");
+	exit(0);
+    return 0;
+}
