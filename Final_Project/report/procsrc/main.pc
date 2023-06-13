@@ -1,0 +1,72 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <sqlca.h>
+#include "Report.h"
+#include "Files.h"
+#include "esql_func.h"
+
+int main(int argc, char *argv[])
+{
+	FILE* fpMsg = openLogFile("msg", "report");
+	FILE* fpLog = openLogFile("err", "report");
+	FILE* fp = openReportFile();
+	
+	char projectDir[] = "/media/sf_Final_project/Test_Project/";
+	int result = 0;
+	result = chdir(projectDir);
+	if (result != 0) { writeToLogErr(fpLog, "Can not change the directori."); }
+	
+	char connectionSql[] = "TEAM3/dbpass@83.228.124.173:6223/TEAM3";
+	//char connectionSql[] = "rosen_karadjov/dbpass@83.228.124.173:6223/rosen_karadjov";
+	int connectResult = 0;
+	connectResult = sql_Connect(fpMsg, fpLog, connectionSql);
+	if (connectResult == 1)
+	{
+	exit(0);
+	}
+	
+	char* option = argv[1];
+	
+    if (argc < 2) {
+		writeToLogErr(fpLog, "Missing arguments beyond the program name");
+        printf("Error: Missing arguments beyond the program name \n");
+        return 1;
+    }
+	
+    if (strcmp(option, "client") == 0) {
+	
+     	if (argc < 3) {
+			writeToLogErr(fpLog, "Missing required arguments client type and customer ID");
+            printf("Error: Missing required arguments client type and customer ID\n");
+            return 1;
+        }
+		
+        int customerID = atoi(argv[2]);
+        		
+        sql_clientInvoices(fpMsg, fpLog, customerID, fp);
+    }
+	else if (strcmp(option, "period") == 0) {
+        
+     	if (argc < 4) {
+            printf("Error: \n");
+            return 1;
+        }
+
+        char* date_from = argv[2];
+        char* date_to = argv[3];
+        
+		sql_periodInvoices(fpMsg, fpLog, date_from, date_to, fp);
+    } 
+	else {
+		writeToLogErr(fpLog, "Invalid option. Not a client ot period.");
+        printf("Invalid option: %s\n", option);
+        return 1;
+    }
+	
+	printf("\n......Have a nice day......\n");
+	exit(0);
+    return 0;
+}
+

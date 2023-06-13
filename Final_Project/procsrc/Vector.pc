@@ -1,0 +1,104 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include"Vector.h"
+#include"Files.h"
+#include <dirent.h>
+
+#define _CRT_SECURE_NO_WARNINGS
+
+void initVector(FILE* fpMsg, FILE* fpLog, FileNameVector* v)
+{
+    v->size = 0;
+    v->capacity = 10;
+    v->data = (char**)malloc(sizeof(char*) * v->capacity);
+
+    if (v->data == NULL)
+    {
+		writeToLogErr(fpLog, "Error reallocating memory for initialing Vectpr.");
+        //fprintf(stderr, "Error allocating memory\n");
+        exit(EXIT_FAILURE);
+    }
+}
+void pushBackVector(FILE* fpMsg, FILE* fpLog, FileNameVector* v, char* elem)
+{
+    if (v->size == v->capacity)
+    {
+        v->capacity *= 2;
+        //new_data realloc
+        v->data = (char**)realloc(v->data, sizeof(char*) * v->capacity);
+
+        if (v->data == NULL)
+        {
+			writeToLogErr(fpLog, "Error reallocating memory for Vectpr.");
+            //fprintf(stderr, "Error reallocating memory\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    size_t elem_len = strlen(elem);
+    v->data[v->size] = (char*)malloc(elem_len + 1);
+
+    if (v->data[v->size] == NULL)
+    {
+		writeToLogErr(fpLog, "Error reallocating memory for string for Vector.");
+        //fprintf(stderr, "Error allocating memory for string\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(v->data[v->size], elem);
+    v->size++;
+}
+
+void removeAt(FILE* fpMsg, FILE* fpLog, FileNameVector* v, int index)
+{
+    if (index < 0 || index >= v->size)
+    {	
+		writeToLogErr(fpLog, "Invalid index for Vector fill.");
+        //printf("Can not remove from the Vector. Invalid index.");
+        return;
+    }
+	int i = 0;
+    for (i = index; i < v->size - 1; i++)
+    {
+        v->data[i] = v->data[i + 1];
+    }
+    v->size--;
+}
+
+void fillFileVector(FILE* fpMsg, FILE* fpLog, const char* newFolder, FileNameVector* fileVector)
+{
+	writeToLogMsg(fpMsg, "Fill file names from the directory in vector.");
+
+    DIR* d;
+    struct dirent* dir;
+    d = opendir(newFolder);
+
+    char fullPath[1000] = { '\0' };
+    int count = 0;
+
+    if (d)
+    {
+        initVector(fpMsg, fpLog, fileVector);
+        while ((dir = readdir(d)) != NULL)
+        {
+            if (dir->d_type == DT_REG)
+            {
+                fullPath[0] = '\0';
+                strcat(fullPath, newFolder);
+                strcat(fullPath, dir->d_name);
+
+                if (dir->d_type == DT_REG)
+                {
+                    pushBackVector(fpMsg, fpLog, fileVector, dir->d_name);
+                }
+                count++;
+            }
+        }
+        closedir(d);
+		writeToLogMsg(fpMsg, "Vector with file names is ready.");
+    }
+	else
+	{
+	writeToLogErr(fpLog, "Can not read the direcory.");
+	}
+}

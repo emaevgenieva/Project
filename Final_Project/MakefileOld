@@ -1,0 +1,28 @@
+# Pro*C Makefile
+PROCC=proc code=ANSI_C include=./include
+CC=gcc -std=gnu99
+INC=-I. -I./include -I$(ORACLE_HOME)/sdk/include
+CFLAGS=-Wall -g $(INC)
+LIBS=-L$(ORACLE_HOME)/lib/ -lclntsh
+
+HEADERS=$(shell find . -name "*.h")
+PCFILES=$(shell find ./procsrc -name "*.pc")
+CFILES=$(shell find ./csrc -name "*.c")
+CSRC=$(PCFILES:.pc=.c)
+LSRC=$(PCFILES:.pc=.lis)
+OBJ=$(PCFILES:.pc=.o) $(CFILES:.c=.o)
+TARGET=project_prog
+
+%.c:%.pc
+	$(PROCC) $<
+
+%.o:%.c $(HEADERS)
+	$(CC) $(CFLAGS) $< -c -o $@
+
+$(TARGET): $(OBJ)
+	$(CC) $(LIBS) $^ -o $@
+
+.PHONI: clean
+
+clean:
+	rm -f $(TARGET) $(OBJ) $(CSRC) $(LSRC)

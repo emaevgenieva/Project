@@ -1,0 +1,119 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <oraca.h>
+#include <sqlca.h>
+#include "Files.h"
+
+
+void sql_batch_select_generator(char* externalRef){
+
+	EXEC SQL BEGIN DECLARE SECTION;
+	    int internalRef = 0;
+	    char vInvoiceNo[51];//номер на фактура
+		int vPaymentId;//ид на плащане
+		double vInvoiceAmount;//сума на фактура
+		double vInvoiceAmountDue;//общата дължима сума
+		double vOvAmount;//парите "отгоре"-> БОНУС ПАРИ
+		double vDifference;//РАЗЛИКАТА МЕЖДУ ДВЕ СУМИ
+	EXEC SQL END DECLARE SECTION;
+	
+	if(strcmp(externalRef, "0") != 0 ){
+	
+		EXEC SQL SELECT CUSTOMER_ID INTO :internalRef
+		   FROM CUSTOMERS
+	          WHERE EXTERNAL_REFERENCE = :externalRef;
+	
+		//internalRef = returnCustomerID(externalRef);
+		printf("\nid e : %d\n", internalRef);
+		
+		EXEC SQL WHENEVER SQLERROR CONTINUE;
+		EXEC SQL DECLARE payments_p CURSOR FOR 
+			  SELECT ov.payment_id, ov.amount, i.inv_no, i.amount, i.amount_due, i.customer_id
+				FROM over_payments ov, payments p, invoices i
+				WHERE ov.original_payment_id = p.payment_id
+				AND p.invoice_no = i.inv_no
+				AND i.amount_due > 0 and  i.customer_id = :internalRef;
+							 							 
+		EXEC SQL OPEN payments_p;
+		
+		EXEC SQL FETCH payments_p INTO :vPaymentId, :vOvAmount, :vInvoiceNo, :vInvoiceAmount, :vInvoiceAmountDue;
+		
+		stringTrim(vInvoiceNo);
+		printf("\n %d, %.2lf, %s, %.2lf, %.2lf\n", vPaymentId, vOvAmount, vInvoiceNo, vInvoiceAmount, vInvoiceAmountDue);
+				
+		vDifference = vInvoiceAmountDue - vOvAmount;//смятаме разликата между бонус парите и парите, които се дължат по фактура
+		//     0    = 27 - 27 
+		//   -10    = 27 - 37
+		//    17    = 27 - 10
+        if(vDifference == 0){// ако разликата на бонус парите и парите, които се дължат по фактура са равни
+		
+			EXEC SQL INSERT INTO payments(payment_id, invoice_no, amount, payment_dt) VALUES (payments_seq.nextval, :vInvoiceNo, :vOvAmount, SYSDATE);
+			EXEC SQL UPDATE invoices SET amount_due = NULL WHERE inv_no = :vInvoiceNo;
+			EXEC SQL DELETE FROM over_payments WHERE payment_id = :vPaymentId;
+		}
+		else if(vDifference < 0){ //ако разликата на бонус парите > парите, които се дължат по фактура
+			
+			EXEC SQL INSERT INTO payments(payment_id, invoice_no, amount, payment_dt) VALUES (payments_seq.nextval, :vInvoiceNo, :vOvAmount, SYSDATE);
+			EXEC SQL DELETE FROM over_payments WHERE payment_id = :vPaymentId;
+		}
+		else{//ако разликата на бонус парите < парите, които се дължат по фактура, т.е. парите не стигат да се изплати фактурата
+		printf("\ntuk sme\n");
+			EXEC SQL INSERT INTO payments(payment_id, invoice_no, amount, payment_dt) VALUES (payments_seq.nextval, :vInvoiceNo, :vOvAmount, SYSDATE);
+			EXEC SQL UPDATE invoices SET amount_due = :vDifference WHERE inv_no = :vInvoiceNo;
+			EXEC SQL DELETE FROM over_payments WHERE payment_id = :vPaymentId;
+		}
+		EXEC SQL COMMIT; 
+		EXEC SQL CLOSE payments_p;
+	}
+	else if(strcmp(externalRef, "0") == 0 ){
+				
+		EXEC SQL WHENEVER SQLERROR CONTINUE;
+		EXEC SQL DECLARE payments_p2 CURSOR FOR 
+			  SELECT ov.payment_id, ov.amount, i.inv_no, i.amount, i.amount_due, i.customer_id
+				FROM over_payments ov, payments p, invoices i
+				WHERE ov.original_payment_id = p.payment_id
+				AND p.invoice_no = i.inv_no
+				AND i.amount_due > 0;
+
+		EXEC SQL OPEN payments_p2;
+		
+		while (sqlca.sqlcode == 0) 
+		{
+		EXEC SQL WHENEVER NOT FOUND DO break;
+				
+		EXEC SQL FETCH payments_p2 INTO :vPaymentId, :vOvAmount, :vInvoiceNo, :vInvoiceAmount, :vInvoiceAmountDue;
+
+		stringTrim(vInvoiceNo);
+		printf("\n %d, %.2lf, %s, %.2lf, %.2lf\n", vPaymentId, vOvAmount, vInvoiceNo, vInvoiceAmount, vInvoiceAmountDue);		
+		
+		vDifference = vInvoiceAmountDue - vOvAmount;//смятаме разликата между бонус парите и парите, които се дължат по фактура
+		//     0    = 27 - 27 
+		//   -10    = 27 - 37
+		//    17    = 27 - 10
+
+		if(vDifference == 0){// ако разликата на бонус парите и парите, които се дължат по фактура са равни
+		
+			EXEC SQL INSERT INTO payments(payment_id, invoice_no, amount, payment_dt) VALUES (payments_seq.nextval, :vInvoiceNo, :vOvAmount, SYSDATE);
+			EXEC SQL UPDATE invoices SET amount_due = NULL WHERE inv_no = :vInvoiceNo;
+			EXEC SQL DELETE FROM over_payments WHERE payment_id = :vPaymentId;
+		}
+		else if(vDifference < 0){ //ако разликата на бонус парите > парите, които се дължат по фактура
+			
+			EXEC SQL INSERT INTO payments(payment_id, invoice_no, amount, payment_dt) VALUES (payments_seq.nextval, :vInvoiceNo, :vOvAmount, SYSDATE);
+			EXEC SQL DELETE FROM over_payments WHERE payment_id = :vPaymentId;
+		}
+		else{//ако разликата на бонус парите < парите, които се дължат по фактура, т.е. парите не стигат да се изплати фактурата
+		printf("\ntuk sme\n");
+			EXEC SQL INSERT INTO payments(payment_id, invoice_no, amount, payment_dt) VALUES (payments_seq.nextval, :vInvoiceNo, :vOvAmount, SYSDATE);
+			EXEC SQL UPDATE invoices SET amount_due = :vDifference WHERE inv_no = :vInvoiceNo;
+			EXEC SQL DELETE FROM over_payments WHERE payment_id = :vPaymentId;
+		}
+		EXEC SQL COMMIT; 
+		
+		}
+		EXEC SQL CLOSE payments_p2;
+	}
+}
+

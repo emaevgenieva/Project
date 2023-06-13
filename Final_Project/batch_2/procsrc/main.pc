@@ -1,0 +1,50 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <sqlca.h>
+#include "batch4.h"
+#include "Files.h"
+
+int main(int argc, char *argv[])
+{
+	
+	FILE* fpMsg = openLogFile("msg", "batch_2");
+	FILE* fpLog = openLogFile("err", "batch_2");
+	
+	char projectDir[] = "/media/sf_Final_project/Test_Project/";
+	int result = 0;
+	result = chdir(projectDir);
+	if (result != 0) { writeToLogErr(fpLog, "Can not change the directori."); }
+
+	char szUserId[64] = "TEAM3/dbpass@83.228.124.173:6223/TEAM3";
+    //char szUserId[64] = "rosen_karadjov/dbpass@83.228.124.173:6223/rosen_karadjov";
+      EXEC SQL CONNECT :szUserId;
+        if (0 == sqlca.sqlcode)
+        {
+          printf("\nConnected.\n");
+	      //return 0;
+        }
+        else
+        {
+	      printf("\nNot connected.\n");
+	      //return 1;
+        }
+	
+	char* extRef = argv[1];
+		
+    if (argc < 1) {
+        printf("Error \n");
+        return 1;
+    }
+	
+    sql_batch_select_generator(extRef);
+	
+	fclose(fpMsg);
+	fclose(fpLog);
+	
+	printf("\n ______Bye Bye______\n");
+	
+	exit(0);
+    return 0;
+}
